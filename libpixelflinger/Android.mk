@@ -1,4 +1,4 @@
-LOCAL_PATH:= $(call my-dir)
+LOCAL_PATH:= system/core/libpixelflinger
 include $(CLEAR_VARS)
 
 #
@@ -6,10 +6,30 @@ include $(CLEAR_VARS)
 #
 
 include $(CLEAR_VARS)
-PIXELFLINGER_SRC_FILES:= \
+
+ifneq ($(wildcard system/core/libpixelflinger/codeflinger/x86/X86Assembler.cpp),)
+    ifeq ($(TARGET_ARCH),x86)
+        TW_HAVE_X86_ACCELERATED_PIXELFLINGER := true
+    endif
+endif
+
+PIXELFLINGER_SRC_FILES += \
+    codeflinger/CodeCache.cpp \
+    format.cpp \
+    clear.cpp \
+    raster.cpp \
+    buffer.cpp
+
+ifneq ($(wildcard system/core/libpixelflinger/codeflinger/tinyutils/VectorImpl.cpp),)
+    PIXELFLINGER_SRC_FILES += \
+        codeflinger/tinyutils/SharedBuffer.cpp \
+        codeflinger/tinyutils/VectorImpl.cpp
+endif
+
+ifneq ($(TW_HAVE_X86_ACCELERATED_PIXELFLINGER),true)
+PIXELFLINGER_SRC_FILES += \
 	codeflinger/ARMAssemblerInterface.cpp \
 	codeflinger/ARMAssemblerProxy.cpp \
-	codeflinger/CodeCache.cpp \
 	codeflinger/GGLAssembler.cpp \
 	codeflinger/load_store.cpp \
 	codeflinger/blending.cpp \
@@ -18,11 +38,24 @@ PIXELFLINGER_SRC_FILES:= \
 	picker.cpp.arm \
 	pixelflinger.cpp.arm \
 	trap.cpp.arm \
-	scanline.cpp.arm \
-	format.cpp \
-	clear.cpp \
-	raster.cpp \
-	buffer.cpp
+	scanline.cpp.arm
+else
+PIXELFLINGER_SRC_FILES_x86 := \
+	codeflinger/x86/X86Assembler.cpp \
+	codeflinger/x86/GGLX86Assembler.cpp \
+	codeflinger/x86/load_store.cpp \
+	codeflinger/x86/blending.cpp \
+	codeflinger/x86/texturing.cpp \
+	fixed.cpp \
+	picker.cpp \
+	pixelflinger.cpp \
+	trap.cpp \
+	scanline.cpp
+
+PIXELFLINGER_C_INCLUDES_x86 := \
+	external/libenc
+
+endif
 
 PIXELFLINGER_CFLAGS := -fstrict-aliasing -fomit-frame-pointer
 
@@ -50,29 +83,28 @@ PIXELFLINGER_SRC_FILES_mips := \
 	arch-mips/t32cb16blend.S \
 
 endif
+
 #
-# Shared library
+# Static library version
 #
 
-LOCAL_MODULE:= libpixelflinger
+include $(CLEAR_VARS)
+LOCAL_CLANG := false
+LOCAL_MODULE:= libpixelflinger_twrp
 LOCAL_SRC_FILES := $(PIXELFLINGER_SRC_FILES)
 LOCAL_SRC_FILES_arm := $(PIXELFLINGER_SRC_FILES_arm)
 LOCAL_SRC_FILES_arm64 := $(PIXELFLINGER_SRC_FILES_arm64)
+LOCAL_SRC_FILES_x86 := $(PIXELFLINGER_SRC_FILES_x86)
 LOCAL_SRC_FILES_mips := $(PIXELFLINGER_SRC_FILES_mips)
-LOCAL_CFLAGS := $(PIXELFLINGER_CFLAGS)
+ifneq ($(shell test $(PLATFORM_SDK_VERSION) -gt 20; echo $$?),0)
+    LOCAL_SRC_FILES += $(LOCAL_SRC_FILES_$(TARGET_ARCH))
+endif
 LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)/include
-LOCAL_C_INCLUDES += $(LOCAL_EXPORT_C_INCLUDE_DIRS) \
-		    external/safe-iop/include
-LOCAL_SHARED_LIBRARIES := libcutils liblog libutils
-
-# Really this should go away entirely or at least not depend on
-# libhardware, but this at least gets us built.
-LOCAL_SHARED_LIBRARIES += libhardware_legacy
-LOCAL_CFLAGS += -DWITH_LIB_HARDWARE
-# t32cb16blend.S does not compile with Clang.
-LOCAL_CLANG_ASFLAGS_arm += -no-integrated-as
-# arch-arm64/col32cb16blend.S does not compile with Clang.
-LOCAL_CLANG_ASFLAGS_arm64 += -no-integrated-as
-include $(BUILD_SHARED_LIBRARY)
-
-include $(call all-makefiles-under,$(LOCAL_PATH))
+LOCAL_C_INCLUDES += $(LOCAL_EXPORT_C_INCLUDE_DIRS)
+LOCAL_CFLAGS := $(PIXELFLINGER_CFLAGS)
+LOCAL_C_INCLUDES_x86 := $(PIXELFLINGER_C_INCLUDES_x86)
+ifeq ($(TW_HAVE_X86_ACCELERATED_PIXELFLINGER),true)
+LOCAL_WHOLE_STATIC_LIBRARIES += libenc
+LOCAL_C_INCLUDES += external/libenc
+endif
+include $(BUILD_STATIC_LIBRARY)
