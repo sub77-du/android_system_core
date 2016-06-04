@@ -2,6 +2,17 @@
 
 LOCAL_PATH := $(call my-dir)
 
+LOCAL_CFLAGS := -Werror
+
+HEALTHD_CHARGER_DEFINES := BACKLIGHT_PATH \
+    CHARGING_ENABLED_PATH
+
+$(foreach healthd_charger_define,$(HEALTHD_CHARGER_DEFINES), \
+  $(if $($(healthd_charger_define)), \
+    $(eval LOCAL_CFLAGS += -D$(healthd_charger_define)=\"$($(healthd_charger_define))\") \
+  ) \
+)
+
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES := healthd_board_default.cpp
 LOCAL_MODULE := libhealthd.default
